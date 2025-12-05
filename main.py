@@ -121,7 +121,7 @@ class TwentyQuestionsGame:
         
         if len(candidates) == 1:
             guess = candidates[0]
-            print(f"\nI've got it! Is it {guess['Name']}?")
+            print(f"\nI've got it.. Is it {guess['Name']}?")
         elif len(candidates) == 0:
             print(f"\nI couldn't narrow it down - no Pokemon match the criteria!")
             confirm = input("\nWhat Pokemon were you thinking of? ").strip().title()
