@@ -6,27 +6,27 @@ from database_helper import PokemonDatabase
 class PopularityLearner:
     def __init__(self, db: PokemonDatabase):
         self.db = db
-        self.learning_rate = 0.1  # How much to adjust popularity each game
-        self.decay_rate = 0.995   # Slight decay for non-selected Pokemon
+        self.learning_rate = 0.1  # learning rate for popularity updates
+        self.decay_rate = 0.995   # decay factor for non-candidate Pokemon popularity
         
     def update_popularity(self, target_pokemon_id: int, 
                          candidates: List[Dict[str, Any]], 
                          was_correct: bool):
         candidate_ids = [p['ID'] for p in candidates]
         
-        # Update target Pokemon (positive reward)
+        # update the target/correct pokemon (positive reward)
         self._adjust_popularity(target_pokemon_id, reward=1.0)
         
-        # Update other candidates (small penalty for being guessed incorrectly)
+        # updating other candidates (negative reward)
         for candidate in candidates:
             if candidate['ID'] != target_pokemon_id:
                 self._adjust_popularity(candidate['ID'], reward=-0.2)
         
-        # Apply decay to non-candidate Pokemon (prevents runaway popularity)
+        # apply decay to non-candidate Pokemon (prevents runaway popularity)
         self._apply_decay(exclude_ids=[target_pokemon_id] + candidate_ids)
         
     def _adjust_popularity(self, pokemon_id: int, reward: float):
-        # Get current popularity
+        # get current popularity
         self.db.cursor.execute("SELECT Popularity FROM mytable WHERE ID = ?", (pokemon_id,))
         result = self.db.cursor.fetchone()
         
@@ -35,13 +35,13 @@ class PopularityLearner:
         
         current_popularity = result[0] if result[0] is not None else 0
         
-        # Update using learning rate
+        # update using learning rate
         new_popularity = current_popularity + (self.learning_rate * reward)
         
-        # Clamp to reasonable range (0 to 100)
+        # clamp to reasonable range (0 to 100)
         new_popularity = max(0, min(100, new_popularity))
         
-        # Update database
+        # update database
         self.db.cursor.execute(
             "UPDATE mytable SET Popularity = ? WHERE ID = ?",
             (new_popularity, pokemon_id)
@@ -49,8 +49,8 @@ class PopularityLearner:
         self.db.connection.commit()
         
     def _apply_decay(self, exclude_ids: List[int]):
-        # Decay popularity of all Pokemon not in exclude_ids
-        # Only decay occasionally to reduce database operations
+        # decay popularity of all Pokemon not in exclude_ids
+        # only apply if there are IDs to exclude
         if len(exclude_ids) > 0:
             placeholders = ','.join('?' * len(exclude_ids))
             self.db.cursor.execute(
@@ -60,8 +60,8 @@ class PopularityLearner:
             self.db.connection.commit()
     
     def get_most_popular(self, candidates: List[Dict[str, Any]], top_n: int = 1) -> List[Dict[str, Any]]:
-        # Return the top N most popular Pokemon from the candidates
-        # Sort by popularity (highest first), then by ID for consistency
+        # return the top N most popular Pokemon from the candidates
+        # sort by popularity (highest first), then by ID for consistency
         sorted_candidates = sorted(
             candidates, 
             key=lambda p: (p.get('Popularity', 0), -p['ID']),
@@ -82,7 +82,7 @@ class PopularityLearner:
         
         stats = dict(self.db.cursor.fetchone())
         
-        # Get top 10 most popular
+        # top 10 popular Pokemon
         self.db.cursor.execute("""
             SELECT Name, Popularity 
             FROM mytable 
@@ -104,20 +104,20 @@ class PopularityLearner:
 
 class AdaptiveQuestionSelector:
     def __init__(self):
-        # Initialize the question selector.
-        self.question_effectiveness = {}  # Track how well each question type narrows down
+        # initialize selector
+        self.question_effectiveness = {}  # track question effectiveness stats
         
     def record_question_result(self, question_type: str, question_detail: Any,
                                before_count: int, after_count: int):
         key = f"{question_type}:{question_detail}"
         
-        # Calculate reduction ratio
+        # calculate reduction ratio
         if before_count > 0:
             reduction_ratio = (before_count - after_count) / before_count
         else:
             reduction_ratio = 0
         
-        # Update running average
+        # update running average
         if key not in self.question_effectiveness:
             self.question_effectiveness[key] = {
                 'total_reduction': reduction_ratio,
@@ -134,9 +134,9 @@ class AdaptiveQuestionSelector:
         key = f"{question_type}:{question_detail}"
         
         if key in self.question_effectiveness:
-            # Return a small boost based on historical effectiveness
+            # return small boost based on average effectiveness
             avg_reduction = self.question_effectiveness[key]['avg_reduction']
-            return avg_reduction * 0.3  # Max boost of 0.3 to information gain
+            return avg_reduction * 0.3  # max boost
         
         return 0.0
     
@@ -144,7 +144,7 @@ class AdaptiveQuestionSelector:
         if not self.question_effectiveness:
             return {'total_questions_tracked': 0, 'top_questions': []}
         
-        # Sort by effectiveness
+        # sort by effectiveness
         sorted_questions = sorted(
             self.question_effectiveness.items(),
             key=lambda x: x[1]['avg_reduction'],

@@ -106,12 +106,12 @@ class TwentyQuestionsGame:
         if confirm in ['yes', 'y']:
             print(f"\nYay! I guessed {guess['Name']} correctly in {self.ai.questions_asked} questions!")
             self._show_pokemon_details(guess)
-            # Update learning: reward correct guess
+            # update learning: reward correct guess
             self.learner.update_popularity(guess['ID'], candidates, was_correct=True)
             return True
         else:
             print(f"Not {guess['Name']}.")
-            # Remove the wrong guess from candidates
+            # remove the wrong guess from candidates
             self.ai.remaining_pokemon = [p for p in self.ai.remaining_pokemon if p['ID'] != guess['ID']]
             return False
     
@@ -146,7 +146,7 @@ class TwentyQuestionsGame:
         if confirm in ['yes', 'y']:
             print(f"\nYay! I guessed {guess['Name']} correctly in {self.ai.questions_asked} questions!")
             self._show_pokemon_details(guess)
-            # Update learning: reward correct guess
+            # update learning: reward correct guess
             self.learner.update_popularity(guess['ID'], candidates, was_correct=True)
         else:
             print(f"\nOh no! I was wrong.")
@@ -156,13 +156,13 @@ class TwentyQuestionsGame:
                 print(f"\nAh, {actual}! Let me see its details...")
                 self._show_pokemon_details(actual_pokemon)
                 print(f"\nI'll learn from this for next time!")
-                # Update learning: learn from mistake
+                # update learning: learn from mistake
                 self.learner.update_popularity(actual_pokemon['ID'], candidates, was_correct=False)
             else:
                 print(f"\nI couldn't find '{actual}' in the database.")
     
     def _show_pokemon_details(self, pokemon: Dict[str, Any]):
-        """Display detailed information about a Pokemon."""
+        # display detailed information about a Pokemon
         print(f"\n{'-' * 60}")
         print(f"  {pokemon['Name'].upper()}")
         print('-' * 60)

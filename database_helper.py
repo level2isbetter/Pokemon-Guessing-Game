@@ -11,7 +11,7 @@ class PokemonDatabase:
         
     def connect(self):
         self.connection = sqlite3.connect(self.db_path)
-        self.connection.row_factory = sqlite3.Row  # Access columns by name
+        self.connection.row_factory = sqlite3.Row  # access columns by name
         self.cursor = self.connection.cursor()
         
     def close(self):
@@ -87,7 +87,7 @@ class PokemonDatabase:
         return {row[0]: row[1] for row in self.cursor.fetchall()}
     
     def get_queryable_attributes(self) -> List[str]:
-        # Only return boolean/binary attributes for yes/no questions
+        # only return boolean/binary attributes for yes/no questions
         return [
             'Lengendary', 'Mythical', 'Baby', 'Fossile', 'Starter',
             'Mega_Evolve', 'Gigantamax', 'Evolves', 'Evolves_from_stone',
