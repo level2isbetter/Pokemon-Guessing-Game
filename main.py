@@ -1,4 +1,3 @@
-import random
 from typing import Dict, Any
 from database_helper import PokemonDatabase
 from game_ai import TwentyQuestionsAI
@@ -104,7 +103,7 @@ class TwentyQuestionsGame:
         confirm = input("(yes/no): ").strip().lower()
         
         if confirm in ['yes', 'y']:
-            print(f"\nYay! I guessed {guess['Name']} correctly in {self.ai.questions_asked} questions!")
+            print(f"\nYay! I guessed {guess['Name']} correctly in {self.ai.questions_asked+1} questions!")
             self._show_pokemon_details(guess)
             # update learning: reward correct guess
             self.learner.update_popularity(guess['ID'], candidates, was_correct=True)
@@ -144,9 +143,9 @@ class TwentyQuestionsGame:
         confirm = input("\nAm I correct? (yes/no): ").strip().lower()
         
         if confirm in ['yes', 'y']:
-            print(f"\nYay! I guessed {guess['Name']} correctly in {self.ai.questions_asked} questions!")
+            print(f"\nYay! I guessed {guess['Name']} correctly in {self.ai.questions_asked+1} questions!")
             self._show_pokemon_details(guess)
-            # update learning: reward correct guess
+            # Update learning: reward correct guess
             self.learner.update_popularity(guess['ID'], candidates, was_correct=True)
         else:
             print(f"\nOh no! I was wrong.")

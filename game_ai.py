@@ -65,7 +65,13 @@ class TwentyQuestionsAI:
         
         weighted_entropy = prob_has * entropy_has + prob_doesnt * entropy_doesnt
         
-        return current_entropy - weighted_entropy
+        info_gain = current_entropy - weighted_entropy
+        
+        # Add popularity bias if learning is enabled
+        if self.use_learning:
+            info_gain = self._apply_popularity_bias(info_gain, type_name, 'type')
+        
+        return info_gain
     
     def calculate_information_gain_for_value(self, attribute: str, value: Any) -> float:
         if not self.remaining_pokemon:
@@ -90,17 +96,29 @@ class TwentyQuestionsAI:
         
         weighted_entropy = prob_has * entropy_has + prob_doesnt * entropy_doesnt
         
-        return current_entropy - weighted_entropy
+        info_gain = current_entropy - weighted_entropy
+        
+        # Add popularity bias if learning is enabled
+        if self.use_learning:
+            info_gain = self._apply_popularity_bias(info_gain, value, attribute)
+        
+        return info_gain
     
     def calculate_information_gain(self, attribute: str) -> float:
         # get distribution of this attribute in remaining Pokemon
-        distribution = self.db.get_attribute_distribution(attribute, self.current_filters)
+        if not self.remaining_pokemon:
+            return 0.0
+        
+        distribution = {}
+        for pokemon in self.remaining_pokemon:
+            value = pokemon[attribute]
+            distribution[value] = distribution.get(value, 0) + 1
         
         if not distribution or len(distribution) == 1:
             return 0.0
         
         # current entropy
-        current_entropy = math.log2(len(self.remaining_pokemon)) if self.remaining_pokemon else 0
+        current_entropy = math.log2(len(self.remaining_pokemon))
         
         # calculate weighted average entropy after asking about this attribute
         total = sum(distribution.values())
@@ -113,7 +131,63 @@ class TwentyQuestionsAI:
                 subset_entropy = math.log2(count) if count > 1 else 0
                 weighted_entropy += probability * subset_entropy
         
-        return current_entropy - weighted_entropy
+        info_gain = current_entropy - weighted_entropy
+        
+        # Add popularity bias if learning is enabled
+        if self.use_learning:
+            info_gain = self._apply_popularity_bias(info_gain, attribute, 'attribute')
+        
+        return info_gain
+    
+    def _apply_popularity_bias(self, info_gain: float, question_detail: Any, question_type: str) -> float:
+        # Trying to boost questions that lead to popular Pokemon
+        if not self.remaining_pokemon:
+            return info_gain
+        
+        # Calculate which Pokemon would remain if answer is "yes"
+        if question_type == 'type':
+            matching_pokemon = [p for p in self.remaining_pokemon 
+                               if p['Type_1'] == question_detail or p['Type_2'] == question_detail]
+        elif question_type == 'attribute':
+            matching_pokemon = [p for p in self.remaining_pokemon 
+                               if p.get(question_detail) == 'true']
+        elif question_type == 'color':
+            matching_pokemon = [p for p in self.remaining_pokemon 
+                               if p.get('Primay_Color') == question_detail]
+        elif question_type == 'region':
+            matching_pokemon = [p for p in self.remaining_pokemon 
+                               if p.get('Region') == question_detail]
+        elif question_type == 'generation':
+            matching_pokemon = [p for p in self.remaining_pokemon 
+                               if p.get('Generation') == question_detail]
+        else:
+            matching_pokemon = []
+        
+        if not matching_pokemon:
+            return info_gain
+        
+        # Calculate average popularity of non-matching Pokemon
+        non_matching = [p for p in self.remaining_pokemon if p not in matching_pokemon]
+        
+        # Use MAX popularity instead of average for stronger signal
+        max_popularity_yes = max((p.get('Popularity', 0) for p in matching_pokemon), default=0)
+        max_popularity_no = max((p.get('Popularity', 0) for p in non_matching), default=0) if non_matching else 0
+        max_popularity_overall = max((p.get('Popularity', 0) for p in self.remaining_pokemon), default=0)
+        
+        # Boost questions that keep the most popular Pokemon in play
+        if max_popularity_overall > 0:
+            best_outcome_popularity = max(max_popularity_yes, max_popularity_no)
+            
+            # Strong boost for questions leading to popular Pokemon
+            # popularity_ratio ranges from 0 to 1
+            popularity_ratio = best_outcome_popularity / max_popularity_overall
+            
+            # Apply up to 100% boost for questions that preserve the most popular Pokemon
+            popularity_boost = info_gain * (popularity_ratio - 0.5) * 2.0
+            
+            return info_gain + max(0, popularity_boost)
+        
+        return info_gain
     
     def find_best_question(self) -> Tuple[str, Any]:
         if not self.remaining_pokemon:
@@ -136,8 +210,13 @@ class TwentyQuestionsAI:
                 best_question = ('attribute', attribute)
         
         # check types (not yet asked about)
-        all_types = self.db.get_all_types()
-        available_types = [t for t in all_types if t not in self.asked_types]
+        remaining_types = set()
+        for p in self.remaining_pokemon:
+            if p['Type_1']:
+                remaining_types.add(p['Type_1'])
+            if p['Type_2']:
+                remaining_types.add(p['Type_2'])
+        available_types = [t for t in remaining_types if t not in self.asked_types]
         for type_name in available_types:
             gain = self.calculate_information_gain_for_type(type_name)
             if gain > best_gain:
@@ -145,8 +224,8 @@ class TwentyQuestionsAI:
                 best_question = ('type', type_name)
         
         # check colors
-        all_colors = self.db.get_all_colors()
-        available_colors = [c for c in all_colors if c not in self.asked_colors]
+        remaining_colors = set(p['Primay_Color'] for p in self.remaining_pokemon if p['Primay_Color'])
+        available_colors = [c for c in remaining_colors if c not in self.asked_colors]
         for color in available_colors:
             gain = self.calculate_information_gain_for_value('Primay_Color', color)
             if gain > best_gain:
@@ -154,8 +233,8 @@ class TwentyQuestionsAI:
                 best_question = ('color', color)
         
         # check regions
-        all_regions = self.db.get_all_regions()
-        available_regions = [r for r in all_regions if r not in self.asked_regions]
+        remaining_regions = set(p['Region'] for p in self.remaining_pokemon if p['Region'])
+        available_regions = [r for r in remaining_regions if r not in self.asked_regions]
         for region in available_regions:
             gain = self.calculate_information_gain_for_value('Region', region)
             if gain > best_gain:
@@ -163,8 +242,8 @@ class TwentyQuestionsAI:
                 best_question = ('region', region)
         
         # check generations
-        all_generations = self.db.get_all_generations()
-        available_generations = [g for g in all_generations if g not in self.asked_generations]
+        remaining_generations = set(p['Generation'] for p in self.remaining_pokemon if p['Generation'])
+        available_generations = [g for g in remaining_generations if g not in self.asked_generations]
         for generation in available_generations:
             gain = self.calculate_information_gain_for_value('Generation', generation)
             if gain > best_gain:
@@ -228,7 +307,11 @@ class TwentyQuestionsAI:
     def make_guess(self) -> Dict[str, Any]:
         # make a guess based on the most likely remaining Pokemon
         if self.remaining_pokemon:
-            return self.remaining_pokemon[0]
+            if self.use_learning:
+                # Guess the most popular Pokemon
+                return max(self.remaining_pokemon, key=lambda p: (p.get('Popularity', 0), -p['ID']))
+            else:
+                return self.remaining_pokemon[0]
         return None
     
     def get_top_candidates(self, n: int = 5) -> List[Dict[str, Any]]:
@@ -256,8 +339,8 @@ class TwentyQuestionsAI:
                 'Mega_Evolve': "Can it mega evolve?",
                 'Gigantamax': "Can it Gigantamax?",
                 'Evolves': "Does it evolve into another Pokemon?",
-                'Evolves_from_stone': "Does it evolve using a stone?",
-                'Evolves_from_trading': "Does it evolve through trading?"
+                'Evolves_from_stone': "Is it evolved from a stone? (e.g. Raichu = yes)",
+                'Evolves_from_trading': "Does it evolve through trading? (e.g. Gengar = yes)"
             }
             return question_templates.get(question_detail, f"Is the {question_detail} true?")
         
@@ -265,7 +348,7 @@ class TwentyQuestionsAI:
             return f"Is it a {question_detail}-type Pokemon?"
         
         elif question_type == 'color':
-            return f"Is it {question_detail} in color?"
+            return f"Is it {question_detail} in color? (Pokedex color)"
         
         elif question_type == 'region':
             return f"Is it from the {question_detail} region?"
